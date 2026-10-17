@@ -253,12 +253,155 @@ export function groupSum(
   return [...map.entries()].sort((a, b) => b[1] - a[1]);
 }
 
-export function dateKey(value: unknown) {
-  if (!value) return "Unknown";
-  const d = new Date(value as string | number | Date);
-  if (Number.isNaN(d.getTime())) {
-    const s = String(value).slice(0, 10);
-    return s || "Unknown";
+/** Normalize 2-digit years to 2000–2099 (payment exports, not 1926). */
+function normalizeYear(year: number | string) {
+  const y = typeof year === "string" ? Number(year) : year;
+  if (!Number.isFinite(y)) return null;
+  if (y >= 0 && y < 100) return 2000 + y;
+  return y;
+}
+
+/**
+ * Parse Created At into calendar year/month/day from the value as written,
+ * without timezone shifts (avoids UTC midnight moving Aug 1 → July).
+ */
+export function parseCreatedParts(
+  value: unknown
+): { year: number; month: number; day: number } | null {
+  if (value == null || value === "") return null;
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    // SheetJS date cells are local calendar dates — use local parts.
+    return {
+      year: value.getFullYear(),
+      month: value.getMonth() + 1,
+      day: value.getDate(),
+    };
   }
-  return d.toISOString().slice(0, 10);
+
+  // Excel serial date (days since 1899-12-30)
+  if (typeof value === "number" && Number.isFinite(value) && value > 20000) {
+    const epoch = Date.UTC(1899, 11, 30);
+    const d = new Date(epoch + Math.round(value) * 86400000);
+    return {
+      year: d.getUTCFullYear(),
+      month: d.getUTCMonth() + 1,
+      day: d.getUTCDate(),
+    };
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  // YYYY-MM-DD or YYYY/MM/DD (optionally with time)
+  const iso = raw.match(
+    /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T].*)?$/
+  );
+  if (iso) {
+    return {
+      year: Number(iso[1]),
+      month: Number(iso[2]),
+      day: Number(iso[3]),
+    };
+  }
+
+  // M/D/YYYY or M/D/YY (US payment exports) with optional time
+  const us = raw.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[,\s].*)?$/
+  );
+  if (us) {
+    const year = normalizeYear(us[3]);
+    if (year == null) return null;
+    return {
+      year,
+      month: Number(us[1]),
+      day: Number(us[2]),
+    };
+  }
+
+  // "Month DD, YYYY" / "Mon DD YYYY"
+  const named = raw.match(
+    /^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})/
+  );
+  if (named) {
+    const d = new Date(`${named[1]} ${named[2]}, ${named[3]} 12:00:00`);
+    if (!Number.isNaN(d.getTime())) {
+      return {
+        year: d.getFullYear(),
+        month: d.getMonth() + 1,
+        day: d.getDate(),
+      };
+    }
+  }
+
+  return null;
+}
+
+export function dateKey(value: unknown) {
+  const parts = parseCreatedParts(value);
+  if (!parts) return "Unknown";
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+export function monthKey(value: unknown) {
+  const parts = parseCreatedParts(value);
+  if (!parts) return "Unknown";
+  if (parts.month < 1 || parts.month > 12) return "Unknown";
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}`;
+}
+
+export function monthLabel(key: string) {
+  if (key === "Unknown") return "Unknown date";
+  const [year, month] = key.split("-");
+  const d = new Date(Number(year), Number(month) - 1, 1);
+  if (Number.isNaN(d.getTime())) return key;
+  return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+
+export type MonthReport = {
+  key: string;
+  label: string;
+  rows: OrderRow[];
+  count: number;
+  totalAmount: number;
+};
+
+export function sumRowAmounts(rows: OrderRow[]) {
+  return rows.reduce((sum, row) => {
+    const n = parseAmount(row.Amount);
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
+}
+
+export function groupRowsByMonth(rows: OrderRow[]): MonthReport[] {
+  const map = new Map<string, OrderRow[]>();
+
+  for (const row of rows) {
+    const key = monthKey(row["Created At"]);
+    const list = map.get(key);
+    if (list) list.push(row);
+    else map.set(key, [row]);
+  }
+
+  // Guard: every source row appears in exactly one month bucket
+  const assigned = [...map.values()].reduce((n, list) => n + list.length, 0);
+  if (assigned !== rows.length) {
+    console.warn(
+      `Month grouping mismatch: ${assigned} assigned vs ${rows.length} source rows`
+    );
+  }
+
+  return [...map.entries()]
+    .sort(([a], [b]) => {
+      if (a === "Unknown") return 1;
+      if (b === "Unknown") return -1;
+      return a.localeCompare(b);
+    })
+    .map(([key, monthRows]) => ({
+      key,
+      label: monthLabel(key),
+      rows: monthRows,
+      count: monthRows.length,
+      totalAmount: sumRowAmounts(monthRows),
+    }));
 }

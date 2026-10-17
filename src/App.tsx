@@ -2,14 +2,14 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, RotateCcw, Sparkles } from "lucide-react";
 import { FileDropzone } from "@/components/file-dropzone";
-import { ResultsChart } from "@/components/results-chart";
 import { ResultsTable } from "@/components/results-table";
 import { StatsBento } from "@/components/stats-bento";
 import { CompareResults } from "@/components/compare-results";
+import { MonthlyPaymentReports } from "@/components/monthly-payment-reports";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
 import {
   compareMembersToPayments,
-  compareResultToCsv,
+  compareResultToXlsx,
   type CompareResult,
 } from "@/lib/compare";
 import { parseSpreadsheet } from "@/lib/parseFile";
@@ -91,14 +91,13 @@ export default function App() {
     setError(null);
   }
 
-  function downloadCompareCsv() {
+  async function downloadCompareXlsx() {
     if (!compareResult) return;
-    const csv = compareResultToCsv(compareResult.rows);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const blob = await compareResultToXlsx(compareResult.rows);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "membership-pay-status.csv";
+    a.download = "membership-pay-status.xlsx";
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -204,7 +203,10 @@ export default function App() {
                   </summary>
                   <div className="mt-4 space-y-4">
                     <StatsBento stats={sourceResult.stats} currency={currency} />
-                    <ResultsChart rows={sourceResult.rows} />
+                    <MonthlyPaymentReports
+                      rows={sourceResult.rows}
+                      currency={currency}
+                    />
                   </div>
                 </details>
               </motion.div>
@@ -237,7 +239,7 @@ export default function App() {
                 <CompareResults
                   result={compareResult}
                   membersFileName={membersName}
-                  onDownload={downloadCompareCsv}
+                  onDownload={downloadCompareXlsx}
                 />
 
                 <details className="rounded-2xl border border-border bg-white/70 p-4 backdrop-blur">
@@ -246,7 +248,10 @@ export default function App() {
                   </summary>
                   <div className="mt-4 space-y-4">
                     <StatsBento stats={sourceResult.stats} currency={currency} />
-                    <ResultsChart rows={sourceResult.rows} />
+                    <MonthlyPaymentReports
+                      rows={sourceResult.rows}
+                      currency={currency}
+                    />
                     <ResultsTable
                       rows={sourceResult.rows}
                       stats={sourceResult.stats}

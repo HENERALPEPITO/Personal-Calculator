@@ -12,7 +12,6 @@ import {
   Download,
   Users,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
 import type {
@@ -108,7 +107,7 @@ export function CompareResults({
           className="inline-flex items-center gap-2 rounded-xl bg-accent px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800"
         >
           <Download className="h-4 w-4" />
-          Download results CSV
+          Download results XLSX
         </button>
       </div>
 
@@ -291,15 +290,17 @@ function StatusBadge({
 }) {
   if (status === "Paid") {
     return (
-      <Badge variant="success" className="gap-1.5">
+      <span className="inline-flex items-center gap-1.5 rounded-sm bg-[#00B050] px-2 py-0.5 font-['Arial',sans-serif] text-xs font-medium text-white">
         Paid
-        {paidAt ? (
-          <span className="font-medium opacity-80">· {paidAt}</span>
-        ) : null}
-      </Badge>
+        {paidAt ? <span>· {paidAt}</span> : null}
+      </span>
     );
   }
-  return <Badge variant="danger">Past Due</Badge>;
+  return (
+    <span className="font-['Arial',sans-serif] text-xs font-bold text-red-600">
+      Past Due
+    </span>
+  );
 }
 
 function ColumnPicker({

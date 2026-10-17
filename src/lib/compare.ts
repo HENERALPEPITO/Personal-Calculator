@@ -96,19 +96,18 @@ function preferNewer(current: OrderRow | undefined, next: OrderRow) {
   return paymentTime(next) >= paymentTime(current) ? next : current;
 }
 
-/** Format payment Created At for display next to Paid. */
+/** Format payment Created At for display next to Paid (short month). */
 export function formatPaidAt(value: unknown) {
   if (value == null || value === "") return "";
   const d = new Date(value as string | number | Date);
   if (!Number.isNaN(d.getTime())) {
-    return d.toLocaleDateString(undefined, {
+    return d.toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
       day: "numeric",
     });
   }
   const raw = String(value).trim();
-  // Keep short date-like strings as-is (e.g. 8/2/2026 21:52 → 8/2/2026)
   const dateOnly = raw.match(/^(\d{1,2}\/\d{1,2}\/\d{2,4})/);
   return dateOnly?.[1] ?? raw;
 }
@@ -279,24 +278,24 @@ export function compareMembersToPayments(
   };
 }
 
-export function compareResultToCsv(rows: MemberRow[]) {
-  const headers = [
-    "ID",
-    "Amount",
-    "Currency",
-    "Type",
-    "Customer ID",
-    "Customer Email",
-    "Offer Title",
-    "Provider",
-    "Created At",
-    "Customer Name",
-    "Previous Note",
-    "Pay Status",
-    "Paid At",
-    "Matched Payment ID",
-  ] as const;
+export const COMPARE_EXPORT_HEADERS = [
+  "ID",
+  "Amount",
+  "Currency",
+  "Type",
+  "Customer ID",
+  "Customer Email",
+  "Offer Title",
+  "Provider",
+  "Created At",
+  "Customer Name",
+  "Previous Note",
+  "Pay Status",
+  "Paid At",
+  "Matched Payment ID",
+] as const;
 
+export function compareResultToCsv(rows: MemberRow[]) {
   const escape = (value: unknown) => {
     const s = String(value ?? "");
     if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
@@ -304,8 +303,77 @@ export function compareResultToCsv(rows: MemberRow[]) {
   };
 
   const lines = [
-    headers.join(","),
-    ...rows.map((row) => headers.map((h) => escape(row[h])).join(",")),
+    COMPARE_EXPORT_HEADERS.join(","),
+    ...rows.map((row) =>
+      COMPARE_EXPORT_HEADERS.map((h) => escape(row[h])).join(",")
+    ),
   ];
   return lines.join("\n");
+}
+
+/** Styled .xlsx: Paid = green bg / white Arial; Past Due = bold red Arial. */
+export async function compareResultToXlsx(rows: MemberRow[]) {
+  const ExcelJS = (await import("exceljs")).default;
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Membership status", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+
+  sheet.columns = COMPARE_EXPORT_HEADERS.map((header) => ({
+    header,
+    key: header,
+    width: Math.max(12, header.length + 2),
+  }));
+
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { name: "Arial", bold: true, size: 11 };
+  headerRow.alignment = { vertical: "middle" };
+
+  const payStatusCol = COMPARE_EXPORT_HEADERS.indexOf("Pay Status") + 1;
+
+  rows.forEach((row, index) => {
+    const values = COMPARE_EXPORT_HEADERS.map((h) => row[h] ?? "");
+    const excelRow = sheet.addRow(values);
+    excelRow.font = { name: "Arial", size: 11 };
+
+    const statusCell = excelRow.getCell(payStatusCol);
+    statusCell.alignment = { vertical: "middle", horizontal: "left" };
+
+    if (row["Pay Status"] === "Paid") {
+      statusCell.value = "Paid";
+      statusCell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF00B050" },
+      };
+      statusCell.font = {
+        name: "Arial",
+        color: { argb: "FFFFFFFF" },
+        size: 11,
+      };
+    } else {
+      statusCell.value = "Past Due";
+      statusCell.font = {
+        name: "Arial",
+        color: { argb: "FFFF0000" },
+        bold: true,
+        size: 11,
+      };
+    }
+
+    // Slightly wider status column after first data row
+    if (index === 0) {
+      sheet.getColumn(payStatusCol).width = 14;
+      sheet.getColumn(COMPARE_EXPORT_HEADERS.indexOf("Customer Email") + 1).width =
+        32;
+      sheet.getColumn(COMPARE_EXPORT_HEADERS.indexOf("Customer Name") + 1).width =
+        22;
+      sheet.getColumn(COMPARE_EXPORT_HEADERS.indexOf("Offer Title") + 1).width = 28;
+    }
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
 }
