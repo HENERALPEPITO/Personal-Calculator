@@ -7,9 +7,19 @@ type FileDropzoneProps = {
   onFile: (file: File) => void;
   loading?: boolean;
   error?: string | null;
+  title?: string;
+  hint?: string;
+  stepLabel?: string;
 };
 
-export function FileDropzone({ onFile, loading, error }: FileDropzoneProps) {
+export function FileDropzone({
+  onFile,
+  loading,
+  error,
+  title = "Drop CSV or XLSX here",
+  hint = "or click to browse",
+  stepLabel,
+}: FileDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -23,6 +33,11 @@ export function FileDropzone({ onFile, loading, error }: FileDropzoneProps) {
 
   return (
     <div className="space-y-3">
+      {stepLabel ? (
+        <p className="text-xs font-semibold uppercase tracking-wider text-accent">
+          {stepLabel}
+        </p>
+      ) : null}
       <motion.button
         type="button"
         whileHover={{ y: -2 }}
@@ -63,16 +78,6 @@ export function FileDropzone({ onFile, loading, error }: FileDropzoneProps) {
             backgroundSize: "18px 18px",
           }}
         />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -left-1/2 top-0 h-full w-full opacity-0 transition group-hover:opacity-100"
-          style={{
-            background:
-              "linear-gradient(110deg, transparent 30%, rgba(15,118,110,0.08) 50%, transparent 70%)",
-            backgroundSize: "200% 100%",
-            animation: "shimmer 2.8s linear infinite",
-          }}
-        />
 
         <div className="relative flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent text-white shadow-lg shadow-teal-900/20">
@@ -84,11 +89,9 @@ export function FileDropzone({ onFile, loading, error }: FileDropzoneProps) {
           </div>
           <div className="space-y-1">
             <p className="text-lg font-semibold tracking-tight text-foreground">
-              {loading ? "Processing your export…" : "Drop CSV or XLSX here"}
+              {loading ? "Processing…" : title}
             </p>
-            <p className="text-sm text-muted">
-              or click to browse · needs Amount, Type, Status columns
-            </p>
+            <p className="text-sm text-muted">{hint}</p>
             <div className="mt-2 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
                 <FileSpreadsheet className="h-3.5 w-3.5 text-accent" />
